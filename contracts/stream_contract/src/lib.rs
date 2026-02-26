@@ -8,7 +8,7 @@ mod types;
 #[cfg(test)]
 mod test;
 
-use soroban_sdk::{contract, contractimpl, token, Address, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, token, Address, Env, InvokeError, String, Symbol, Vec};
 
 use errors::StreamError;
 use events::{
@@ -113,6 +113,7 @@ impl StreamContract {
     /// # Errors
     /// - `InvalidAmount`   — `amount` ≤ 0.
     /// - `InvalidDuration` — `duration` is 0.
+    /// - `InvalidTokenAddress` — `token_address` is not a token contract.
     pub fn create_stream(
         env: Env,
         sender: Address,
@@ -129,6 +130,7 @@ impl StreamContract {
         if duration == 0 {
             return Err(StreamError::InvalidDuration);
         }
+        Self::validate_token_contract(&env, &token_address)?;
 
         let stream_id = next_stream_id(&env);
         let start_time = env.ledger().timestamp();
@@ -229,6 +231,19 @@ impl StreamContract {
     }
 
     // ─── Internal Helpers ─────────────────────────────────────────────────────
+
+    fn validate_token_contract(env: &Env, token_address: &Address) -> Result<(), StreamError> {
+        let result = env.try_invoke_contract::<String, InvokeError>(
+            token_address,
+            &Symbol::new(env, "symbol"),
+            Vec::new(env),
+        );
+
+        match result {
+            Ok(Ok(_)) => Ok(()),
+            _ => Err(StreamError::InvalidTokenAddress),
+        }
+    }
 
     fn calculate_claimable(stream: &Stream, now: u64) -> i128 {
         let elapsed = now.saturating_sub(stream.last_update_time);
